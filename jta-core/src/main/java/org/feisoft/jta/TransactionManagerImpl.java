@@ -1,12 +1,12 @@
-
 package org.feisoft.jta;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
+import org.feisoft.common.utils.ByteUtils;
+import org.feisoft.common.utils.C3P0Util;
 import org.feisoft.jta.image.BackInfo;
 import org.feisoft.jta.resource.XATerminatorImpl;
 import org.feisoft.jta.supports.wire.RemoteCoordinator;
-import org.feisoft.common.utils.ByteUtils;
 import org.feisoft.transaction.*;
 import org.feisoft.transaction.Transaction;
 import org.feisoft.transaction.TransactionManager;
@@ -32,10 +32,12 @@ public class TransactionManagerImpl implements TransactionManager, TransactionTi
 
     @javax.inject.Inject
     private TransactionBeanFactory beanFactory;
-    private int timeoutSeconds = 5 * 6000;
-    private final Map<Thread, Transaction> associatedTxMap = new ConcurrentHashMap<Thread, Transaction>();
-    private int expireMilliSeconds = 15 * 1000;
 
+    private int timeoutSeconds = 5 * 6000;
+
+    private final Map<Thread, Transaction> associatedTxMap = new ConcurrentHashMap<Thread, Transaction>();
+
+    private int expireMilliSeconds = 15 * 1000;
 
     public void begin() throws NotSupportedException, SystemException {
         if (this.getTransaction() != null) {
@@ -70,7 +72,8 @@ public class TransactionManagerImpl implements TransactionManager, TransactionTi
         logger.info("[{}] begin-transaction", ByteUtils.byteArrayToString(globalXid.getGlobalTransactionId()));
     }
 
-    public void commit() throws RollbackException, HeuristicMixedException, HeuristicRollbackException, SecurityException,
+    public void commit()
+            throws RollbackException, HeuristicMixedException, HeuristicRollbackException, SecurityException,
             IllegalStateException, SystemException {
         Transaction transaction = this.desociateThread();
         if (transaction == null) {
@@ -265,18 +268,19 @@ public class TransactionManagerImpl implements TransactionManager, TransactionTi
 
     private void rollbackOverTimeImage() {
 
-
         long now = System.currentTimeMillis();
-        logger.debug("TransactionManagerImpl.rollbackOverTimeImage,now={}", now);
 
         ResultSet rs = null;
         Connection conn = null;
         Statement stmt = null;
         try {
-            Class.forName(XATerminatorImpl.sourceProp.get("className"));
-            conn = DriverManager.getConnection(XATerminatorImpl.sourceProp.get("url"), XATerminatorImpl.sourceProp.get("user"), XATerminatorImpl.sourceProp.get("password"));
+            conn = C3P0Util
+                    .getConnection(XATerminatorImpl.sourceProp.get("className"), XATerminatorImpl.sourceProp.get("url"),
+                            XATerminatorImpl.sourceProp.get("user"), XATerminatorImpl.sourceProp.get("password"));
             stmt = conn.createStatement();
-            String sql = "select u.id, rollback_info,k.create_time from txc_lock k,txc_undo_log u where k.xid=u.xid and k.branch_id=u.branch_id and  k.create_time +" + expireMilliSeconds + "< " + now;
+            String sql =
+                    "select u.id, rollback_info,k.create_time from txc_lock k,txc_undo_log u where k.xid=u.xid and k.branch_id=u.branch_id and  k.create_time +"
+                            + expireMilliSeconds + "< " + now;
             rs = stmt.executeQuery(sql);
             boolean isExpire = false;
             while (rs.next()) {
@@ -291,9 +295,13 @@ public class TransactionManagerImpl implements TransactionManager, TransactionTi
                 String imageInfo = rs.getString("rollback_info");
                 logger.info("TransactionManagerImpl.ExeBackinfo:{}", imageInfo);
 
-                BackInfo backInfo = JSON.parseObject(imageInfo, new TypeReference<BackInfo>() {});
+                BackInfo backInfo = JSON.parseObject(imageInfo, new TypeReference<BackInfo>() {
+
+                });
                 backInfo.setId(rs.getLong("id"));
-                Connection connS = DriverManager.getConnection(XATerminatorImpl.sourceProp.get("url"), XATerminatorImpl.sourceProp.get("user"), XATerminatorImpl.sourceProp.get("password"));
+                Connection connS = DriverManager
+                        .getConnection(XATerminatorImpl.sourceProp.get("url"), XATerminatorImpl.sourceProp.get("user"),
+                                XATerminatorImpl.sourceProp.get("password"));
                 Statement stmtS = connS.createStatement();
                 backInfo.rollback(stmtS);
                 backInfo.updateStatusFinish(stmtS);
@@ -305,9 +313,7 @@ public class TransactionManagerImpl implements TransactionManager, TransactionTi
                 sql = "delete from txc_lock where  create_time +" + expireMilliSeconds + "< " + now;
                 stmt.execute(sql);
             }
-        } catch (ClassNotFoundException e) {
-            logger.error("Config.classNameNotFound", e);
-        } catch (SQLException e) {
+        }catch (SQLException e) {
             logger.error("SQLException", e);
         } catch (XAException e) {
             logger.error("XAException", e);

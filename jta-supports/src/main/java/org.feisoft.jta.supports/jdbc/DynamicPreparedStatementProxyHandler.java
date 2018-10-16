@@ -7,6 +7,7 @@ import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.select.SelectBody;
 import org.apache.commons.lang3.StringUtils;
+import org.feisoft.common.utils.C3P0Util;
 import org.feisoft.common.utils.SqlpraserUtils;
 import org.feisoft.jta.TransactionImpl;
 import org.feisoft.jta.image.BackInfo;
@@ -68,7 +69,7 @@ public class DynamicPreparedStatementProxyHandler implements InvocationHandler {
 
         System.out.println("invoke method=" + method.getName());
         if (method.getName().startsWith("set") && args != null && args.length == 2) {
-//            Integer seq = (Integer) args[0];
+            //            Integer seq = (Integer) args[0];
             params.add(args[1]);
         }
         List<String> proxyMethods = Arrays
@@ -125,14 +126,13 @@ public class DynamicPreparedStatementProxyHandler implements InvocationHandler {
     }
 
     private Object LockSharedMode(Method method, Object[] args)
-            throws ClassNotFoundException, SQLException, XAException, JSQLParserException, IllegalAccessException,
-            InvocationTargetException {
+            throws SQLException, XAException, JSQLParserException, IllegalAccessException, InvocationTargetException {
         Connection conn = null;
         Statement st = null;
         Xid currentXid;
         try {
-            Class.forName(XADataSourceImpl.className);
-            conn = DriverManager.getConnection(XADataSourceImpl.url, XADataSourceImpl.user, XADataSourceImpl.password);
+            conn = C3P0Util.getConnection(XADataSourceImpl.className, XADataSourceImpl.url, XADataSourceImpl.user,
+                    XADataSourceImpl.password);
             st = conn.createStatement();
 
             BackInfo backInfo = new BackInfo();
@@ -144,6 +144,7 @@ public class DynamicPreparedStatementProxyHandler implements InvocationHandler {
             String branchXid = partBranchXid(currentXid);
             getSlock(conn, st, resolver, GloableXid, branchXid);
         } finally {
+            //将连接还回到池中
             if (conn != null) {
                 conn.close();
             }
@@ -159,8 +160,7 @@ public class DynamicPreparedStatementProxyHandler implements InvocationHandler {
     }
 
     private Object invokUpdate(Method method, Object[] args)
-            throws ClassNotFoundException, SQLException, XAException, JSQLParserException, IllegalAccessException,
-            InvocationTargetException {
+            throws SQLException, XAException, JSQLParserException, IllegalAccessException, InvocationTargetException {
         BackInfo backInfo = new BackInfo();
         PreparedStatement ps = null;
         Object obj = null;
@@ -174,9 +174,9 @@ public class DynamicPreparedStatementProxyHandler implements InvocationHandler {
         }
         Xid currentXid = TransactionImpl.currentXid.get();
         //事务数据源从对应数据库获取前置对象
-        Class.forName(XADataSourceImpl.className);
-        Connection conn = DriverManager
-                .getConnection(XADataSourceImpl.url, XADataSourceImpl.user, XADataSourceImpl.password);
+        Connection conn = C3P0Util
+                .getConnection(XADataSourceImpl.className, XADataSourceImpl.url, XADataSourceImpl.user,
+                        XADataSourceImpl.password);
         Statement st = conn.createStatement();
 
         BaseResolvers resolver = ImageUtil.getImageResolvers(sql, backInfo, conn, st);
